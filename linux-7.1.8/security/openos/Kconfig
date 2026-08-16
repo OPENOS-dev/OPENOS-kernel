@@ -1,0 +1,11 @@
+config SECURITY_OPENOS
+	def_bool y
+	depends on SECURITY
+	help
+	  OPENOS Security 安全模块: 永久保护 OPENOS-Security 框架的内置安全子模块
+	  (System/OPT/Application 守护进程) 与经 OAK 认证的第三方守护进程。
+	  拦截对受保护进程的 SIGKILL/SIGTERM, 仅 Security Watchdog 可终止。
+
+	  *** 强制启用, 不允许禁用 ***
+	  def_bool y: 只要 CONFIG_SECURITY=y 即编译进内核, 无 =n 选项;
+	  LSM order 为 FIRST(5.15)/LAST(6.12+), 无视 lsm= 参数与 CONFIG_LSM 列表。
