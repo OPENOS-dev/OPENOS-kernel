@@ -81,7 +81,7 @@ jobs:
           mkdir -p "$WORK/out"
           cd "$KDIR"
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
-          scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS
+          scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS -e MODULES
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
           # prepare 生成 host 工具 + vdso.lds 等; modules_prepare 生成 scripts/module.lds
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) prepare >/dev/null
