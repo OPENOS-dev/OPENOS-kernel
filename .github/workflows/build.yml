@@ -83,8 +83,9 @@ jobs:
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
-          # prepare 生成 scripts/module.lds + host 工具 (修复 No rule to make target 'scripts/module.lds')
+          # prepare 生成 host 工具 + vdso.lds 等; modules_prepare 生成 scripts/module.lds
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) prepare >/dev/null
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) modules_prepare >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) all >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} INSTALL_MOD_PATH="$WORK/pkg" modules_install >/dev/null
           mkdir -p "$WORK/pkg/boot"
@@ -111,6 +112,8 @@ jobs:
           cd /tmp/binpkg-repo
           mkdir -p "bins/${COMPONENT}/${ARCH}"
           cp -f "$GITHUB_WORKSPACE/${PKG}" "bins/${COMPONENT}/${ARCH}/"
+          # 构建成功: 删除对应的失败日志, 避免 failure-report 重复创建 Issue
+          rm -f "logs/${COMPONENT}/$ARCH.log"
           git config user.name "OPENOS CI"
           git config user.email "ci@openos.dev"
           git add -A
