@@ -37,11 +37,13 @@ jobs:
             libssl-dev zlib1g-dev liblz4-dev liblzma-dev libzstd-dev libbz2-dev \
             libgcrypt20-dev libcurl4-openssl-dev libdb-dev gettext gawk bison flex bc \
             libelf-dev libncurses-dev dwarves kmod cpio file libsodium-dev \
+            automake autoconf libtool libarchive-dev libcap-dev libwlroots-dev \
+            libblkid-dev libuuid-dev libmount-dev libsmartcols-dev libfdisk-dev \
             qt6-base-dev qt6-declarative-dev qt6-wayland-dev \
-            ${{ matrix.arch == 'arm64' && 'gcc-aarch64-linux-gnu' || '' }} \
-            ${{ matrix.arch == 'arm32' && 'gcc-arm-linux-gnueabihf' || '' }} \
+            ${{ matrix.arch == 'arm64' && 'crossbuild-essential-arm64' || '' }} \
+            ${{ matrix.arch == 'arm32' && 'crossbuild-essential-armhf' || '' }} \
             ${{ matrix.arch == 'x86' && 'gcc-multilib' || '' }} \
-            ${{ matrix.arch == 'loong64' && 'gcc-loongarch64-linux-gnu' || '' }}
+            ${{ matrix.arch == 'loong64' && 'crossbuild-essential-loongarch64' || '' }}
           ccache -M 4G
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 
@@ -81,8 +83,8 @@ jobs:
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
-          # 先构建 host 工具与 module.lds (修复 scripts/module.lds / usr/initramfs_data.o 缺失)
-          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) prepare scripts_basic >/dev/null
+          # modules_prepare 生成 scripts/module.lds + usr/ 的 initramfs host 工具
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) modules_prepare >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) all >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} INSTALL_MOD_PATH="$WORK/pkg" modules_install >/dev/null
           mkdir -p "$WORK/pkg/boot"
