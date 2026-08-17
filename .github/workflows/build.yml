@@ -61,8 +61,8 @@ jobs:
             loong64)TARGET=loongarch64-openos-linux-gnu; CROSS=loongarch64-linux-gnu- ;;
           esac
           export TARGET CROSS
-          PKG="${COMPONENT}-${ARCH}-DEV2026.1.pkg.tar.zst"
           WORK="$(mktemp -d)"
+          PKG="$WORK/${COMPONENT}-${ARCH}-DEV2026.1.pkg.tar.zst"
                     # 内核分层 (默认 base=6.12.103)
           case "$KERNEL_TIER" in
             classic) KDIR=linux-5.15.215 ;;
