@@ -36,7 +36,7 @@ jobs:
             build-essential ccache zstd meson ninja-build cmake pkg-config \
             libssl-dev zlib1g-dev liblz4-dev liblzma-dev libzstd-dev libbz2-dev \
             libgcrypt20-dev libcurl4-openssl-dev libdb-dev gettext gawk bison flex bc \
-            libelf-dev libncurses-dev dwarves kmod cpio file \
+            libelf-dev libncurses-dev dwarves kmod cpio file libsodium-dev \
             qt6-base-dev qt6-declarative-dev qt6-wayland-dev \
             ${{ matrix.arch == 'arm64' && 'gcc-aarch64-linux-gnu' || '' }} \
             ${{ matrix.arch == 'arm32' && 'gcc-arm-linux-gnueabihf' || '' }} \
@@ -77,9 +77,12 @@ jobs:
           esac
           [ -d "$KDIR" ] || { echo "::error::内核目录缺失: $KDIR"; exit 1; }
           mkdir -p "$WORK/out"
-          make -C "$KDIR" O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           cd "$KDIR"
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
+          # 先构建 host 工具与 module.lds (修复 scripts/module.lds / usr/initramfs_data.o 缺失)
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) prepare scripts_basic >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) all >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} INSTALL_MOD_PATH="$WORK/pkg" modules_install >/dev/null
           mkdir -p "$WORK/pkg/boot"
@@ -139,8 +142,8 @@ jobs:
           git clone --depth 1 "https://x-access-token:${BINPKG_TOKEN}@github.com/${BINPKG_REPO}.git" /tmp/binpkg-repo
           cd /tmp/binpkg-repo
           mkdir -p "logs/${COMPONENT}"
-          rm -f "$ARCH.log"
-          cp "$RUNNER_TEMP/fail.txt" "$ARCH.log"
+          rm -f "logs/${COMPONENT}/$ARCH.log"
+          cp "$RUNNER_TEMP/fail.txt" "logs/${COMPONENT}/$ARCH.log"
           git config user.name "OPENOS CI"
           git config user.email "ci@openos.dev"
           git add -A
