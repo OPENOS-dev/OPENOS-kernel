@@ -43,6 +43,11 @@
 *.rpm
 *.rsi
 *.s
+# 大写 .S 是真实汇编源文件(如 scripts/module.lds.S、arch/*/kernel/entry.S),
+# 必须在仓库中跟踪。macOS 大小写不敏感文件系统下 *.s 会误匹配 .S 导致
+# 这些源文件被忽略、CI 检出时缺失并出现 "No rule to make target scripts/module.lds"。
+# 用 !*.S 显式取消忽略, 优先级高于 *.s。
+!*.S
 *.so
 *.so.dbg
 *.su
