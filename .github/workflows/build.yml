@@ -1,53 +1,4 @@
-name: OPENOS binpkg build
-
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
-    inputs:
-      kernel:
-        description: 内核分层 (仅 kernel 组件生效)
-        type: choice
-        default: base
-        options: [base, base7, preview, classic]
-
-jobs:
-  build:
-    name: build-${{ matrix.arch }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86-64, x86, arm64, arm32, loong64]
-
-    env:
-      COMPONENT: kernel
-      BINPKG_REPO: OPENOS-dev/OPENOS-BUILD-BINPKG
-      KERNEL_TIER: ${{ inputs.kernel || 'base' }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: 安装构建依赖与交叉工具链
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            build-essential ccache zstd meson ninja-build cmake pkg-config \
-            libssl-dev zlib1g-dev liblz4-dev liblzma-dev libzstd-dev libbz2-dev \
-            libgcrypt20-dev libcurl4-openssl-dev libdb-dev gettext gawk bison flex bc \
-            libelf-dev libncurses-dev dwarves kmod cpio file libsodium-dev \
-            automake autoconf libtool libarchive-dev libcap-dev libwlroots-dev \
-            libblkid-dev uuid-dev libmount-dev libsmartcols-dev libfdisk-dev \
-            qt6-base-dev qt6-declarative-dev qt6-wayland-dev \
-            ${{ matrix.arch == 'arm64' && 'crossbuild-essential-arm64' || '' }} \
-            ${{ matrix.arch == 'arm32' && 'crossbuild-essential-armhf' || '' }} \
-            ${{ matrix.arch == 'x86' && 'gcc-multilib' || '' }} \
-            ${{ matrix.arch == 'loong64' && 'gcc-13-loongarch64-linux-gnu g++-13-loongarch64-linux-gnu' || '' }}
-          ccache -M 4G
-          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
-
-      - name: 构建并打包 binpkg
+- name: 构建并打包 binpkg
         run: |
           set -euo pipefail
           # 全程输出写入日志文件 (供失败上报 step 读取)
@@ -55,7 +6,7 @@ jobs:
           ARCH="${{ matrix.arch }}"
           case "$ARCH" in
             x86-64) TARGET=x86_64-openos-linux-gnu; CROSS="" ;;
-            x86)    TARGET=i686-openos-linux-gnu;     CROSS="" ;;
+            x86)    TARGET=i686-openos-linux-gnu;   CROSS="" ;;
             arm64)  TARGET=aarch64-openos-linux-gnu;  CROSS=aarch64-linux-gnu- ;;
             arm32)  TARGET=armv7h-openos-linux-gnueabihf; CROSS=arm-linux-gnueabihf- ;;
             loong64)TARGET=loongarch64-openos-linux-gnu; CROSS=loongarch64-linux-gnu- ;;
@@ -63,7 +14,8 @@ jobs:
           export TARGET CROSS
           WORK="$(mktemp -d)"
           PKG="$WORK/${COMPONENT}-${ARCH}-DEV2026.1.pkg.tar.zst"
-                    # 内核分层 (默认 base=6.12.103)
+          
+          # 内核分层 (默认 base=6.12.103)
           case "$KERNEL_TIER" in
             classic) KDIR=linux-5.15.215 ;;
             base7)   KDIR=linux-7.1.8 ;;
@@ -80,76 +32,25 @@ jobs:
           [ -d "$KDIR" ] || { echo "::error::内核目录缺失: $KDIR"; exit 1; }
           mkdir -p "$WORK/out"
           cd "$KDIR"
+
+          # 1. 配置内核
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS -e MODULES
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
-          # 让内核构建系统自己按依赖生成 host 工具 / vdso.lds / module.lds
+
+          # 2. 【关键修复】优先顺序预编译 prepare 依赖，防止 -j 并行导致 module.lds / vdso32.lds 丢失
+          make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} prepare modules_prepare >/dev/null
+
+          # 3. 开启多线程并行编译
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} -j$(nproc) all >/dev/null
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} INSTALL_MOD_PATH="$WORK/pkg" modules_install >/dev/null
+          
           mkdir -p "$WORK/pkg/boot"
           cp "$WORK/out/arch/$KARCH/boot/"* "$WORK/pkg/boot/" 2>/dev/null || true
           cp "$WORK/out/System.map" "$WORK/pkg/boot/System.map" 2>/dev/null || true
+          
+          # 4. 打包
           cd "$WORK"
-          # 打包
           mkdir -p "$WORK/pkg"
           tar --zstd -cf "$PKG" -C "$WORK/pkg" .
           ls -la "$PKG"
-
-      - name: 推送 binpkg 到共享仓库
-        env:
-          BINPKG_TOKEN: ${{ secrets.OPENOS_BINPKG_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "$BINPKG_TOKEN" ]; then
-            echo "::warning::未配置 secrets.OPENOS_BINPKG_TOKEN，跳过推送"
-            exit 0
-          fi
-          ARCH="${{ matrix.arch }}"
-          PKG="$WORK/${COMPONENT}-${ARCH}-DEV2026.1.pkg.tar.zst"
-          rm -rf /tmp/binpkg-repo
-          git clone --depth 1 "https://x-access-token:${BINPKG_TOKEN}@github.com/${BINPKG_REPO}.git" /tmp/binpkg-repo
-          cd /tmp/binpkg-repo
-          mkdir -p "bins/${COMPONENT}/${ARCH}"
-          cp -f "$GITHUB_WORKSPACE/${PKG}" "bins/${COMPONENT}/${ARCH}/"
-          # 构建成功: 删除对应的失败日志, 避免 failure-report 重复创建 Issue
-          rm -f "logs/${COMPONENT}/$ARCH.log"
-          git config user.name "OPENOS CI"
-          git config user.email "ci@openos.dev"
-          git add -A
-          git commit -m "binpkg: ${COMPONENT} ${ARCH} (${GITHUB_SHA:0:8})" || echo "no changes"
-          git push -q origin main
-
-      - name: 上报失败原因到共享仓库
-        if: failure()
-        env:
-          BINPKG_TOKEN: ${{ secrets.OPENOS_BINPKG_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "$BINPKG_TOKEN" ]; then
-            echo "::warning::未配置 OPENOS_BINPKG_TOKEN，跳过失败上报"
-            exit 0
-          fi
-          ARCH="${{ matrix.arch }}"
-          {
-            echo "# ${COMPONENT} 构建失败 (${ARCH})"
-            echo
-            echo "- 仓库: ${{ github.repository }}"
-            echo "- 运行: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "- 提交: ${{ github.sha }}"
-            echo "- 时间: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo
-            echo "## 构建日志尾部"
-            echo '```'
-            tail -80 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(未捕获到日志)"
-            echo '```'
-          } > "$RUNNER_TEMP/fail.txt"
-          git clone --depth 1 "https://x-access-token:${BINPKG_TOKEN}@github.com/${BINPKG_REPO}.git" /tmp/binpkg-repo
-          cd /tmp/binpkg-repo
-          mkdir -p "logs/${COMPONENT}"
-          rm -f "logs/${COMPONENT}/$ARCH.log"
-          cp "$RUNNER_TEMP/fail.txt" "logs/${COMPONENT}/$ARCH.log"
-          git config user.name "OPENOS CI"
-          git config user.email "ci@openos.dev"
-          git add -A
-          git commit -m "fail-log: ${COMPONENT}/${ARCH} (${GITHUB_SHA:0:8})" || echo "no changes"
-          git push -q origin main
