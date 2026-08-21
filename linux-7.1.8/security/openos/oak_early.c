@@ -104,7 +104,7 @@ static int oak_sha256(const void *data, unsigned int len, u8 out[OAK_SHA256_LEN]
 	desc->tfm = tfm;
 	rc = crypto_shash_digest(desc, data, len, out);
 
-	SHASH_DESC_ZERO_CLEAR(desc);
+	shash_desc_zero(desc);
 	crypto_free_shash(tfm);
 	return rc;
 }
@@ -204,6 +204,8 @@ static void oak_fail_and_halt(const char *reason)
 	pr_emerg("OAK-Seal: 系统已锁定 (完整性校验失败)\n");
 	machine_halt();
 }
+
+void __init openos_oak_early_init(void);
 
 /* =====================================================================
  * 入口: 由 init/main.c start_kernel() 调用

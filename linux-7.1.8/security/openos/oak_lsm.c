@@ -460,12 +460,17 @@ static int oak_derive_key(const u8 *pa, size_t la, const u8 *pb, size_t lb,
 	 * 简化: 直接异或拼接两次 SHA 轮 (骨架) —— 正式用 crypto_shash */
 	const u8 *parts[2] = { pa, pb };
 	size_t lens[2] = { la, lb };
-	u8 buf[OAK_KEY_MAX * 2];
+	u8 *buf;
 	size_t off = 0;
 	int i;
 
-	if (la + lb > sizeof(buf))
+	buf = kmalloc(OAK_KEY_MAX * 2, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	if (la + lb > OAK_KEY_MAX * 2) {
+		kfree(buf);
 		return -EINVAL;
+	}
 	for (i = 0; i < 2; i++) {
 		memcpy(buf + off, parts[i], lens[i]);
 		off += lens[i];
@@ -474,6 +479,7 @@ static int oak_derive_key(const u8 *pa, size_t la, const u8 *pb, size_t lb,
 	memset(out, 0, OAK_HASH_LEN);
 	for (i = 0; i < (int)off; i++)
 		out[i % OAK_HASH_LEN] ^= buf[i];
+	kfree(buf);
 	return 0;
 }
 

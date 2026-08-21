@@ -104,7 +104,7 @@ static int oak_sha256(const void *data, unsigned int len, u8 out[OAK_SHA256_LEN]
 	desc->tfm = tfm;
 	rc = crypto_shash_digest(desc, data, len, out);
 
-	SHASH_DESC_ZERO_CLEAR(desc);
+	shash_desc_zero(desc);
 	crypto_free_shash(tfm);
 	return rc;
 }
