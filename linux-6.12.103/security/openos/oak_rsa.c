@@ -38,7 +38,7 @@
 #define OPENRSA_AKCIPHER     "pkcs1pad(rsa,sha256)"
 
 /* ---- 毫秒时间戳 (ktime, CLOCK_REALTIME) ---- */
-s64 openrsa_ms(void)
+static s64 openrsa_ms(void)
 {
 	struct timespec64 ts;
 
@@ -61,23 +61,6 @@ static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
 	return (int)(len + (size_t)tlen);
 }
 
-/* ---- SHA-256 (crypto_shash) ---- */
-static int openrsa_sha256(const void *data, unsigned int len, u8 out[32])
-{
-	struct crypto_shash *tfm;
-	SHASH_DESC_ON_STACK(desc, tfm);
-	int rc;
-
-	tfm = crypto_alloc_shash("sha256", 0, 0);
-	if (IS_ERR(tfm))
-		return PTR_ERR(tfm);
-	desc->tfm = tfm;
-	rc = crypto_shash_digest(desc, data, len, out);
-	shash_desc_zero(desc);
-	crypto_free_shash(tfm);
-	return rc;
-}
-
 /* =====================================================================
  * 核心: 服务端握手
  * 验签 H1 (客户端公钥) + 叠加生成 H2 (服务端私钥)
@@ -97,7 +80,7 @@ static int openrsa_sha256(const void *data, unsigned int len, u8 out[32])
  *
  * 返回: 0 成功 / -1 参数错误 / -2 验签失败 / -ENOPROTOOPT 无 RSA 支持
  * ===================================================================== */
-int openrsa_handshake(const u8 *client_data, size_t len,
+static int openrsa_handshake(const u8 *client_data, size_t len,
 		      const u8 *client_pubkey, size_t pubkey_len,
 		      const u8 *server_privkey, size_t privkey_len,
 		      const u8 *h1_from_client, size_t h1_len,

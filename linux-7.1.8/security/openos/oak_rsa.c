@@ -37,6 +37,15 @@
  * 最通用为 pkcs1pad(rsa,sha256), 若不可用回退 "rsa") */
 #define OPENRSA_AKCIPHER     "pkcs1pad(rsa,sha256)"
 
+/* Forward declarations */
+s64 openrsa_ms(void);
+int openrsa_handshake(const u8 *client_data, size_t len,
+		      const u8 *client_pubkey, size_t pubkey_len,
+		      const u8 *server_privkey, size_t privkey_len,
+		      const u8 *h1_from_client, size_t h1_len,
+		      s64 *out_ms,
+		      u8 *out_h2, size_t *out_h2_len);
+
 /* ---- 毫秒时间戳 (ktime, CLOCK_REALTIME) ---- */
 s64 openrsa_ms(void)
 {
@@ -62,6 +71,7 @@ static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
 }
 
 /* ---- SHA-256 (crypto_shash) ---- */
+#if 0
 static int openrsa_sha256(const void *data, unsigned int len, u8 out[32])
 {
 	struct crypto_shash *tfm;
@@ -77,6 +87,7 @@ static int openrsa_sha256(const void *data, unsigned int len, u8 out[32])
 	crypto_free_shash(tfm);
 	return rc;
 }
+#endif
 
 /* =====================================================================
  * 核心: 服务端握手

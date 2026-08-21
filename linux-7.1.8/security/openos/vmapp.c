@@ -32,6 +32,7 @@
  *   - kern_path_create / set_fs_root / ksys_unshare / iterate_dir 跨版本稳定
  */
 
+#include <linux/ctype.h>
 #include <linux/fs.h>
 #include <linux/fs_struct.h>
 #include <linux/kernel.h>
@@ -41,6 +42,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task.h>
 #include <linux/string.h>
+#include <linux/syscalls.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
 
