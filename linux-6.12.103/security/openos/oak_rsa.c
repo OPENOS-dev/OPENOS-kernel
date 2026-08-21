@@ -37,8 +37,11 @@
  * 最通用为 pkcs1pad(rsa,sha256), 若不可用回退 "rsa") */
 #define OPENRSA_AKCIPHER     "pkcs1pad(rsa,sha256)"
 
+/* ---- 毫秒时间戳 (ktime, CLOCK_REALTIME) 与签名构造 ————
+ * 以下函数为握手协议骨架, 暂未接入 akcipher, 用 #if 0 禁用。
+ * 生产接入后移除 #if 0 包裹即可。
+ */
 #if 0
-/* ---- 毫秒时间戳 (ktime, CLOCK_REALTIME) ---- */
 static s64 openrsa_ms(void)
 {
 	struct timespec64 ts;
@@ -46,9 +49,7 @@ static s64 openrsa_ms(void)
 	ktime_get_real_ts64(&ts);
 	return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
 }
-#endif
 
-/* ---- 构造签名输入: data || ms ---- */
 static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
 			    u8 *out, size_t out_sz)
 {
@@ -63,7 +64,6 @@ static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
 	return (int)(len + (size_t)tlen);
 }
 
-#if 0
 /* =====================================================================
  * 核心: 服务端握手
  * 验签 H1 (客户端公钥) + 叠加生成 H2 (服务端私钥)

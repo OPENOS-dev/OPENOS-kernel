@@ -43,7 +43,12 @@ jobs:
             ${{ matrix.arch == 'arm64' && 'crossbuild-essential-arm64' || '' }} \
             ${{ matrix.arch == 'arm32' && 'crossbuild-essential-armhf' || '' }} \
             ${{ matrix.arch == 'x86' && 'gcc-multilib libc6-dev-i386' || '' }} \
-            ${{ matrix.arch == 'loong64' && 'gcc-13-loongarch64-linux-gnu g++-13-loongarch64-linux-gnu' || '' }}
+            ${{ matrix.arch == 'loong64' && 'gcc-14-loongarch64-linux-gnu g++-14-loongarch64-linux-gnu binutils-loongarch64-linux-gnu' || '' }}
+          # loong64: gcc-14 安装后二进制为 loongarch64-linux-gnu-gcc-14, 创建无版本后缀软链接
+          if [ '${{ matrix.arch }}' = 'loong64' ] && ! command -v loongarch64-linux-gnu-gcc &>/dev/null; then
+            sudo ln -sf /usr/bin/loongarch64-linux-gnu-gcc-14 /usr/bin/loongarch64-linux-gnu-gcc
+            sudo ln -sf /usr/bin/loongarch64-linux-gnu-g++-14 /usr/bin/loongarch64-linux-gnu-g++
+          fi
           ccache -M 4G
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 

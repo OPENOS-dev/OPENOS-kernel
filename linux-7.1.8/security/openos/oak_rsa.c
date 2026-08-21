@@ -55,7 +55,6 @@ s64 openrsa_ms(void)
 	ktime_get_real_ts64(&ts);
 	return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
 }
-#endif
 
 /* ---- 构造签名输入: data || ms ---- */
 static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
@@ -71,6 +70,7 @@ static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
 	memcpy(out + len, ts, (size_t)tlen);
 	return (int)(len + (size_t)tlen);
 }
+#endif
 
 /* ---- SHA-256 (crypto_shash) ---- */
 #if 0
