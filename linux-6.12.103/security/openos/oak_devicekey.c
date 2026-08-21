@@ -35,7 +35,6 @@
 static u8 oak_dev_pubkey[OAK_DEVKEY_MAX];
 static size_t oak_dev_pubkey_len;
 static u8 oak_dev_privkey[OAK_DEVKEY_MAX];
-static size_t oak_dev_privkey_len;
 static bool oak_devkey_ready;
 static DEFINE_MUTEX(oak_devkey_lock);
 
@@ -49,7 +48,6 @@ static DEFINE_MUTEX(oak_devkey_lock);
 static int oak_devkey_generate(void)
 {
 	struct crypto_akcipher *tfm;
-	struct akcipher_request *req;
 	u8 *key = NULL;
 	int rc = 0;
 

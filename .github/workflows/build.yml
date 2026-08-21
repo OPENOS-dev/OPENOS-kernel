@@ -87,6 +87,8 @@ jobs:
 
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} defconfig >/dev/null
           scripts/config --file "$WORK/out/.config" -e SECURITY -e SECURITY_OPENOS -e MODULES
+          # xt_mark.h 在某些架构上缺失, 禁用该模块避免编译错误
+          scripts/config --file "$WORK/out/.config" -d NETFILTER_XT_MARK
           make O="$WORK/out" ARCH="$KARCH" ${CROSS:+CROSS_COMPILE=$CROSS} olddefconfig >/dev/null
 
           # 预编译 prepare 依赖，防止并行编译导致 .lds 丢失

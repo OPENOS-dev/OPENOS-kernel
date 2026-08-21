@@ -50,6 +50,10 @@
 #include <linux/mnt_idmapping.h>
 #endif
 
+/* ---- 外部函数原型 (供 oak_lsm.c 调用) ---- */
+int openos_vmapp_init(void);
+void openos_vmapp_exit(void);
+
 #define VMAPP_ROOT      "/vmapp"
 #define VMAPP_NAME_MAX  63
 #define VMAPP_PATH_MAX  512
@@ -210,7 +214,7 @@ static int vmapp_list(const char *app, const char *sub, struct vmapp_req *req)
 /* ---- ioctl: 进入虚拟化 / 读取列表 ---- */
 static long vmapp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct vmapp_req req;
+	struct vmapp_req *req;
 	long rc;
 
 	if (cmd != VMAPP_IOC_CMD)
@@ -220,53 +224,67 @@ static long vmapp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	if (copy_from_user(&req, (void __user *)arg, sizeof req))
-		return -EFAULT;
+	req = kmalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
 
-	rc = vmapp_check_name(req.app_name);
+	if (copy_from_user(req, (void __user *)arg, sizeof(*req))) {
+		rc = -EFAULT;
+		goto out_free;
+	}
+
+	rc = vmapp_check_name(req->app_name);
 	if (rc != 0)
-		return rc;
-	if (vmapp_check_subpath(req.sub_path) != 0)
-		return -EINVAL;
+		goto out_free;
+	if (vmapp_check_subpath(req->sub_path) != 0) {
+		rc = -EINVAL;
+		goto out_free;
+	}
 
-	if (req.enable) {
+	if (req->enable) {
 		/* 1. 创建骨架 */
-		rc = vmapp_ensure_root(req.app_name);
+		rc = vmapp_ensure_root(req->app_name);
 		if (rc != 0)
-			return rc;
+			goto out_free;
 		/* 2. 新挂载命名空间 (保持 net/pid ns 不变) */
 		rc = ksys_unshare(CLONE_NEWNS);
 		if (rc != 0)
-			return rc;
+			goto out_free;
 		/* 3. 切换到 /vmapp/<app> 视图 */
 		{
 			struct path p;
 			char root[VMAPP_PATH_MAX];
 
 			snprintf(root, sizeof root, "%s/%s",
-				 VMAPP_ROOT, req.app_name);
+				 VMAPP_ROOT, req->app_name);
 			rc = kern_path(root, LOOKUP_FOLLOW | LOOKUP_DIRECTORY,
 				       &p);
 			if (rc != 0)
-				return rc;
+				goto out_free;
 			set_fs_root(current->fs, &p);
 			set_fs_pwd(current->fs, &p);
 			path_put(&p);
 		}
-		req.out_len = 0;
-	} else if (req.sub_path[0]) {
+		req->out_len = 0;
+	} else if (req->sub_path[0]) {
 		/* 读取指定子目录列表 (应用抽屉场景) */
-		rc = vmapp_list(req.app_name, req.sub_path, &req);
+		rc = vmapp_list(req->app_name, req->sub_path, req);
 		if (rc != 0)
-			return rc;
+			goto out_free;
 	} else {
 		/* enable=0 无 sub_path: 进程退出即恢复宿主机视图 */
-		req.out_len = 0;
+		req->out_len = 0;
 	}
 
-	if (copy_to_user((void __user *)arg, &req, sizeof req) != 0)
-		return -EFAULT;
-	return 0;
+	if (copy_to_user((void __user *)arg, req, sizeof(*req)) != 0) {
+		rc = -EFAULT;
+		goto out_free;
+	}
+	rc = 0;
+
+out_free:
+	kfree(req);
+	return rc;
 }
 
 static const struct file_operations vmapp_fops = {
