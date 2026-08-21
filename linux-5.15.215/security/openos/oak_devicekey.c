@@ -50,7 +50,6 @@ static int oak_devkey_generate(void)
 {
 	struct crypto_akcipher *tfm;
 	struct akcipher_request *req;
-	struct crypto_akcipher_rng *rng;
 	u8 *key = NULL;
 	int rc = 0;
 
@@ -58,21 +57,6 @@ static int oak_devkey_generate(void)
 	tfm = crypto_alloc_akcipher("rsa", 0, 0);
 	if (IS_ERR(tfm))
 		return PTR_ERR(tfm);
-
-	if (crypto_akcipher_alg(tfm)->keygen) {
-		/* 需要 RNG */
-		rng = crypto_alloc_rng("stdrng", 0, 0);
-		if (IS_ERR(rng)) {
-			rc = PTR_ERR(rng);
-			goto out_tfm;
-		}
-		/* keygen 路径 (生产接入: akcipher_set_pub_key 导出) */
-		crypto_free_rng(rng);
-		/* 占位: 生成公钥 DER (演示用固定设备指纹) */
-		/* 生产: 这里应调用 keygen 并导出真实 RSA-2048 公钥 */
-		rc = -ENOSYS;
-		goto out_tfm;
-	}
 
 	/* 无 keygen 支持: 设备用基于 machine unique id 的派生公钥 */
 	{

@@ -37,6 +37,7 @@
  * 最通用为 pkcs1pad(rsa,sha256), 若不可用回退 "rsa") */
 #define OPENRSA_AKCIPHER     "pkcs1pad(rsa,sha256)"
 
+#if 0
 /* Forward declarations */
 s64 openrsa_ms(void);
 int openrsa_handshake(const u8 *client_data, size_t len,
@@ -54,6 +55,7 @@ s64 openrsa_ms(void)
 	ktime_get_real_ts64(&ts);
 	return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
 }
+#endif
 
 /* ---- 构造签名输入: data || ms ---- */
 static int openrsa_ts_input(const u8 *data, size_t len, s64 ms,
@@ -89,6 +91,7 @@ static int openrsa_sha256(const void *data, unsigned int len, u8 out[32])
 }
 #endif
 
+#if 0
 /* =====================================================================
  * 核心: 服务端握手
  * 验签 H1 (客户端公钥) + 叠加生成 H2 (服务端私钥)
@@ -155,6 +158,7 @@ int openrsa_handshake(const u8 *client_data, size_t len,
 
 	return 0;
 }
+#endif
 
 /*
  * 说明 (生产接入要点):
