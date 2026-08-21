@@ -98,6 +98,7 @@ jobs:
           mkdir -p "$WORK/pkg"
           tar --zstd -cf "$PKG" -C "$WORK/pkg" .
           ls -la "$PKG"
+          echo "WORK=$WORK" >> $GITHUB_ENV
 
       - name: 推送 binpkg 到共享仓库
         env:
@@ -114,7 +115,7 @@ jobs:
           git clone --depth 1 "https://x-access-token:${BINPKG_TOKEN}@github.com/${BINPKG_REPO}.git" /tmp/binpkg-repo
           cd /tmp/binpkg-repo
           mkdir -p "bins/${COMPONENT}/${ARCH}"
-          cp -f "$GITHUB_WORKSPACE/${PKG}" "bins/${COMPONENT}/${ARCH}/"
+          cp -f "$PKG" "bins/${COMPONENT}/${ARCH}/"
           rm -f "logs/${COMPONENT}/$ARCH.log"
           git config user.name "OPENOS CI"
           git config user.email "ci@openos.dev"

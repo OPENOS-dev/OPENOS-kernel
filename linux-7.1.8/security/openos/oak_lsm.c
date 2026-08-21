@@ -85,7 +85,7 @@
 #define OAK_BUCKET_BITS 8
 #define OAK_BUCKETS     (1U << OAK_BUCKET_BITS)
 #define OAK_ROLE_NAME_MAX 16
-#define OAK_OP_MAX       8
+#define OAK_OP_MAX       16
 
 /* =====================================================================
  * [固定逻辑] 内核权利: 各角色的能力集合 (capabilities)
@@ -456,11 +456,8 @@ static int oak_derive_key(const u8 *pa, size_t la, const u8 *pb, size_t lb,
 {
 	/* 用内核 crypto API 做 SHA-256; 避免直接依赖, 此处用简单 xorshift 摘要
 	 * 仅为握手密钥骨架 —— 正式实现应替换为 crypto_shash("sha256")。
-	 * 见 oak_handshake_verify() 的 CONFIG_CRYPTO 条件编译说明。 */
-	struct sha256_ctx { u32 s[8]; } ctx = { .s = {0x6a09e667, 0xbb67ae85,
-		0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-		0x5be0cd19} };
-	/* 简化: 直接异或拼接两次 SHA 轮 (骨架) —— 正式用 crypto_shash */
+	 * 见 oak_handshake_verify() 的 CONFIG_CRYPTO 条件编译说明。
+	 * 简化: 直接异或拼接两次 SHA 轮 (骨架) —— 正式用 crypto_shash */
 	const u8 *parts[2] = { pa, pb };
 	size_t lens[2] = { la, lb };
 	u8 buf[OAK_KEY_MAX * 2];
@@ -892,57 +889,82 @@ static int oak_hex_to_bytes(const char *hex, u8 *out, size_t out_sz)
 static ssize_t oak_subjects_write(struct file *file, const char __user *buf,
 				  size_t len, loff_t *ppos)
 {
-	char kbuf[2048];
+	char *kbuf, *hex;
+	u8 *key;
 	char op[OAK_OP_MAX];
 	char name[OAK_SUBJECT_NAME_MAX];
 	char kind_s[8];
-	char hex[OAK_KEY_HEX_MAX];
 	u64 capmask;
-	u8 key[OAK_KEY_MAX];
 	int pid, klen, rc;
+	ssize_t ret;
 
-	if (len >= sizeof(kbuf))
-		return -EINVAL;
-	if (copy_from_user(kbuf, buf, len))
-		return -EFAULT;
+	kbuf = kmalloc(len + 1, GFP_KERNEL);
+	hex = kmalloc(OAK_KEY_HEX_MAX, GFP_KERNEL);
+	key = kmalloc(OAK_KEY_MAX, GFP_KERNEL);
+	if (!kbuf || !hex || !key) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	if (copy_from_user(kbuf, buf, len)) {
+		ret = -EFAULT;
+		goto out;
+	}
 	kbuf[len] = '\0';
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
+	if (!capable(CAP_SYS_ADMIN)) {
+		ret = -EPERM;
+		goto out;
+	}
 
-	if (sscanf(kbuf, "%7s %23s", op, name) != 2)
-		return -EINVAL;
+	if (sscanf(kbuf, "%7s %23s", op, name) != 2) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	if (strcmp(op, "register") == 0) {
 		enum oak_subject_kind kind;
 		int n = sscanf(kbuf, "%*s %*s %7s %d %llx %2047s",
 			       kind_s, &pid,
 			       (unsigned long long *)&capmask, hex);
-		if (n < 3)
-			return -EINVAL;
+		if (n < 3) {
+			ret = -EINVAL;
+			goto out;
+		}
 		if (strcmp(kind_s, "builtin") == 0)
 			kind = OAK_SUBJECT_BUILTIN;
 		else if (strcmp(kind_s, "third") == 0)
 			kind = OAK_SUBJECT_THIRD;
-		else
-			return -EINVAL;
+		else {
+			ret = -EINVAL;
+			goto out;
+		}
 		klen = 0;
 		if (n >= 4 && hex[0] != '\0') {
-			klen = oak_hex_to_bytes(hex, key, sizeof(key));
-			if (klen < 0)
-				return klen;
+			klen = oak_hex_to_bytes(hex, key, OAK_KEY_MAX);
+			if (klen < 0) {
+				ret = klen;
+				goto out;
+			}
 		}
 		rc = oak_subject_register(name, kind, pid, capmask,
 					  klen > 0 ? key : NULL, (size_t)klen);
-		if (rc != 0)
-			return rc;
-		return len;
+		if (rc != 0) {
+			ret = rc;
+			goto out;
+		}
+		ret = (ssize_t)len;
+		goto out;
 	}
 	if (strcmp(op, "pubkey") == 0) {
-		if (sscanf(kbuf, "%*s %*s %2047s", hex) != 1)
-			return -EINVAL;
-		klen = oak_hex_to_bytes(hex, key, sizeof(key));
-		if (klen < 0)
-			return klen;
+		if (sscanf(kbuf, "%*s %*s %2047s", hex) != 1) {
+			ret = -EINVAL;
+			goto out;
+		}
+		klen = oak_hex_to_bytes(hex, key, OAK_KEY_MAX);
+		if (klen < 0) {
+			ret = klen;
+			goto out;
+		}
 		rc = oak_subject_register(name,
 					  oak_subject_find(name) ?
 						oak_subject_find(name)->kind :
@@ -953,17 +975,28 @@ static ssize_t oak_subjects_write(struct file *file, const char __user *buf,
 						oak_subject_find(name)->capmask :
 						OAK_WL_DEFAULT_CAPS,
 					  key, (size_t)klen);
-		if (rc != 0)
-			return rc;
-		return len;
+		if (rc != 0) {
+			ret = rc;
+			goto out;
+		}
+		ret = (ssize_t)len;
+		goto out;
 	}
 	if (strcmp(op, "unregister") == 0) {
 		rc = oak_subject_unregister(name);
-		if (rc != 0)
-			return rc;
-		return len;
+		if (rc != 0) {
+			ret = rc;
+			goto out;
+		}
+		ret = (ssize_t)len;
+		goto out;
 	}
-	return -EINVAL;
+	ret = -EINVAL;
+out:
+	kfree(kbuf);
+	kfree(hex);
+	kfree(key);
+	return ret;
 }
 
 /* ---- 握手接口 (内核侧应答路径) ----
@@ -974,52 +1007,80 @@ static ssize_t oak_subjects_write(struct file *file, const char __user *buf,
 static ssize_t oak_handshake_write(struct file *file, const char __user *buf,
 				   size_t len, loff_t *ppos)
 {
-	char kbuf[4096];
+	char *kbuf, *hex, *sig_hex;
+	u8 *peer_pub, *sig;
 	char op[OAK_OP_MAX];
 	char name[OAK_SUBJECT_NAME_MAX];
-	char hex[OAK_KEY_HEX_MAX];
-	char sig_hex[OAK_KEY_HEX_MAX];
-	u8 peer_pub[OAK_KEY_MAX];
-	u8 sig[OAK_KEY_MAX];
 	struct oak_subject *me;
 	int plen, slen, rc;
+	ssize_t ret;
 
-	if (len >= sizeof(kbuf))
-		return -EINVAL;
-	if (copy_from_user(kbuf, buf, len))
-		return -EFAULT;
+	kbuf = kmalloc(len + 1, GFP_KERNEL);
+	hex = kmalloc(OAK_KEY_HEX_MAX, GFP_KERNEL);
+	sig_hex = kmalloc(OAK_KEY_HEX_MAX, GFP_KERNEL);
+	peer_pub = kmalloc(OAK_KEY_MAX, GFP_KERNEL);
+	sig = kmalloc(OAK_KEY_MAX, GFP_KERNEL);
+	if (!kbuf || !hex || !sig_hex || !peer_pub || !sig) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
+
+	if (copy_from_user(kbuf, buf, len)) {
+		ret = -EFAULT;
+		goto out_free;
+	}
 	kbuf[len] = '\0';
 
-	if (sscanf(kbuf, "%7s %23s", op, name) != 2)
-		return -EINVAL;
+	if (sscanf(kbuf, "%7s %23s", op, name) != 2) {
+		ret = -EINVAL;
+		goto out_free;
+	}
 	me = oak_subject_find(name);
-	if (!me)
-		return -ENOENT;
+	if (!me) {
+		ret = -ENOENT;
+		goto out_free;
+	}
 
 	if (strcmp(op, "challenge") == 0) {
 		u8 ch[OAK_CHALLENGE_LEN];
 		oak_gen_challenge(ch);
-		/* 简化: 挑战通过 show() 打印; 此处直接打印到控制台 (骨架) */
 		pr_info("OAK: challenge for %s: %*phN\n", name, OAK_CHALLENGE_LEN, ch);
-		return len;
+		ret = (ssize_t)len;
+		goto out_free;
 	}
 	if (strcmp(op, "verify") == 0) {
-		if (sscanf(kbuf, "%*s %*s %2047s %2047s", hex, sig_hex) != 2)
-			return -EINVAL;
-		plen = oak_hex_to_bytes(hex, peer_pub, sizeof(peer_pub));
-		if (plen < 0)
-			return plen;
-		slen = oak_hex_to_bytes(sig_hex, sig, sizeof(sig));
-		if (slen < 0)
-			return slen;
+		if (sscanf(kbuf, "%*s %*s %2047s %2047s", hex, sig_hex) != 2) {
+			ret = -EINVAL;
+			goto out_free;
+		}
+		plen = oak_hex_to_bytes(hex, peer_pub, OAK_KEY_MAX);
+		if (plen < 0) {
+			ret = plen;
+			goto out_free;
+		}
+		slen = oak_hex_to_bytes(sig_hex, sig, OAK_KEY_MAX);
+		if (slen < 0) {
+			ret = slen;
+			goto out_free;
+		}
 		rc = oak_handshake(me, peer_pub, (size_t)plen,
 				   sig, (size_t)slen, sig, (size_t)slen);
-		if (rc != 0)
-			return rc;
+		if (rc != 0) {
+			ret = rc;
+			goto out_free;
+		}
 		pr_info("OAK: handshake OK: %s\n", name);
-		return len;
+		ret = (ssize_t)len;
+		goto out_free;
 	}
-	return -EINVAL;
+	ret = -EINVAL;
+out_free:
+	kfree(kbuf);
+	kfree(hex);
+	kfree(sig_hex);
+	kfree(peer_pub);
+	kfree(sig);
+	return ret;
 }
 
 /* =====================================================================
