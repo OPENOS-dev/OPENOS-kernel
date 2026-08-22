@@ -492,7 +492,6 @@ static int oak_handshake(struct oak_subject *me,
 			 const u8 *challenge, size_t ch_len,
 			 const u8 *sig_in, size_t sig_len)
 {
-	u8 my_challenge[OAK_CHALLENGE_LEN];
 	u8 K[OAK_HASH_LEN];
 	int rc;
 
@@ -545,8 +544,6 @@ static int oak_handshake(struct oak_subject *me,
 		spin_unlock_irqrestore(&oak_sessions_lock, flags);
 	}
 
-	/* 生成我方挑战 (回发) */
-	oak_gen_challenge(my_challenge);
 	return 0;
 }
 
